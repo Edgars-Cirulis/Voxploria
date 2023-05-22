@@ -1,4 +1,5 @@
 #include "VulkanRenderer.h"
+#include "Logger.h"
 #include <algorithm>
 
 VulkanRenderer::VulkanRenderer() : instance(VK_NULL_HANDLE), physicalDevice(VK_NULL_HANDLE), device(VK_NULL_HANDLE) {}
@@ -15,6 +16,7 @@ void VulkanRenderer::Initialize() {
     }
     catch (const std::exception& e) {
         std::cerr << "An error occurred: " << e.what() << std::endl;
+        Logger::Log("Runtime", std::string(e.what()));
         Cleanup();
         throw;
     }
@@ -48,6 +50,7 @@ void VulkanRenderer::CreateInstance() {
     VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create Vulkan instance.");
+        Logger::Log("Vulkan", "Failed to create Vulkan instance.");
     }
 }
 
@@ -56,12 +59,14 @@ void VulkanRenderer::SelectPhysicalDevice() {
     VkResult result = vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
     if (result != VK_SUCCESS || deviceCount == 0) {
         throw std::runtime_error("Failed to find GPUs with Vulkan support.");
+        Logger::Log("Vulkan", "Failed to find GPUs with Vulkan support.");
     }
 
     std::vector<VkPhysicalDevice> physicalDevices(deviceCount);
     result = vkEnumeratePhysicalDevices(instance, &deviceCount, physicalDevices.data());
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to enumerate physical devices.");
+        Logger::Log("Vulkan", "Failed to enumerate physical devices.");
     }
 
     VkPhysicalDevice preferredDevice = VK_NULL_HANDLE;
@@ -93,6 +98,7 @@ void VulkanRenderer::SelectPhysicalDevice() {
     }
     else {
         throw std::runtime_error("Failed to find a suitable GPU.");
+        Logger::Log("Vulkan", "Failed to find a suitable GPU.");
     }
 }
 
@@ -154,6 +160,7 @@ void VulkanRenderer::CreateLogicalDevice() {
     VkResult result = vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &device);
     if (result != VK_SUCCESS) {
         throw std::runtime_error("Failed to create logical device.");
+        Logger::Log("Vulkan", "Failed to create logical device.");
     }
 
     this->device = device;
