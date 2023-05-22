@@ -1,4 +1,5 @@
 #include "VulkanRenderer.h"
+#include <algorithm>
 
 VulkanRenderer::VulkanRenderer() : instance(VK_NULL_HANDLE), physicalDevice(VK_NULL_HANDLE), device(VK_NULL_HANDLE) {}
 
@@ -7,9 +8,16 @@ VulkanRenderer::~VulkanRenderer() {
 }
 
 void VulkanRenderer::Initialize() {
-    CreateInstance();
-    SelectPhysicalDevice();
-    CreateLogicalDevice();
+    try {
+        CreateInstance();
+        SelectPhysicalDevice();
+        CreateLogicalDevice();
+    }
+    catch (const std::exception& e) {
+        std::cerr << "An error occurred: " << e.what() << std::endl;
+        Cleanup();
+        throw;
+    }
 }
 
 void VulkanRenderer::Cleanup() {
@@ -38,17 +46,23 @@ void VulkanRenderer::CreateInstance() {
     createInfo.pApplicationInfo = &appInfo;
 
     VkResult result = vkCreateInstance(&createInfo, nullptr, &instance);
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create Vulkan instance.");
+    }
 }
 
 void VulkanRenderer::SelectPhysicalDevice() {
     uint32_t deviceCount = 0;
-    vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-    if (deviceCount == 0) {
+    VkResult result = vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+    if (result != VK_SUCCESS || deviceCount == 0) {
         throw std::runtime_error("Failed to find GPUs with Vulkan support.");
     }
 
     std::vector<VkPhysicalDevice> physicalDevices(deviceCount);
-    vkEnumeratePhysicalDevices(instance, &deviceCount, physicalDevices.data());
+    result = vkEnumeratePhysicalDevices(instance, &deviceCount, physicalDevices.data());
+    if (result != VK_SUCCESS) {
+        throw std::runtime_error("Failed to enumerate physical devices.");
+    }
 
     VkPhysicalDevice preferredDevice = VK_NULL_HANDLE;
     VkPhysicalDevice fallbackDevice = VK_NULL_HANDLE;
@@ -70,6 +84,7 @@ void VulkanRenderer::SelectPhysicalDevice() {
             }
         }
     }
+
     if (preferredDevice != VK_NULL_HANDLE) {
         physicalDevice = preferredDevice;
     }
@@ -81,7 +96,6 @@ void VulkanRenderer::SelectPhysicalDevice() {
     }
 }
 
-
 void VulkanRenderer::CreateLogicalDevice() {
     std::vector<VkQueueFamilyProperties> queueFamilies;
 
@@ -92,61 +106,47 @@ void VulkanRenderer::CreateLogicalDevice() {
 
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
 
-    int graphicsQueueFamilyIndex = -1;
-    int computeQueueFamilyIndex = -1;
-    int transferQueueFamilyIndex = -1;
+    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+
+    std::vector<int> queueFamilyIndices;
+    const float queuePriority = 1.0f;
 
     for (uint32_t i = 0; i < queueFamilyCount; ++i) {
         const VkQueueFamilyProperties& queueFamily = queueFamilies[i];
 
         if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-            graphicsQueueFamilyIndex = i;
+            queueFamilyIndices.push_back(i);
         }
 
         if (queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) {
-            computeQueueFamilyIndex = i;
+            queueFamilyIndices.push_back(i);
         }
 
         if (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT) {
-            transferQueueFamilyIndex = i;
-        }
-
-        if (graphicsQueueFamilyIndex != -1 && computeQueueFamilyIndex != -1 && transferQueueFamilyIndex != -1) {
-            break;
+            queueFamilyIndices.push_back(i);
         }
     }
 
-    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+    std::sort(queueFamilyIndices.begin(), queueFamilyIndices.end());
+    queueFamilyIndices.erase(std::unique(queueFamilyIndices.begin(), queueFamilyIndices.end()), queueFamilyIndices.end());
 
-    float queuePriority = 1.0f;
+    for (int queueFamilyIndex : queueFamilyIndices) {
+        VkDeviceQueueCreateInfo queueCreateInfo = {};
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = queueFamilyIndex;
+        queueCreateInfo.queueCount = 1;
+        queueCreateInfo.pQueuePriorities = &queuePriority;
+        queueCreateInfos.push_back(queueCreateInfo);
+    }
 
-    VkDeviceQueueCreateInfo graphicsQueueCreateInfo = {};
-    graphicsQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    graphicsQueueCreateInfo.queueFamilyIndex = graphicsQueueFamilyIndex;
-    graphicsQueueCreateInfo.queueCount = 1;
-    graphicsQueueCreateInfo.pQueuePriorities = &queuePriority;
-    queueCreateInfos.push_back(graphicsQueueCreateInfo);
-
-    VkDeviceQueueCreateInfo computeQueueCreateInfo = {};
-    computeQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    computeQueueCreateInfo.queueFamilyIndex = computeQueueFamilyIndex;
-    computeQueueCreateInfo.queueCount = 1;
-    computeQueueCreateInfo.pQueuePriorities = &queuePriority;
-    queueCreateInfos.push_back(computeQueueCreateInfo);
-
-    VkDeviceQueueCreateInfo transferQueueCreateInfo = {};
-    transferQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    transferQueueCreateInfo.queueFamilyIndex = transferQueueFamilyIndex;
-    transferQueueCreateInfo.queueCount = 1;
-    transferQueueCreateInfo.pQueuePriorities = &queuePriority;
-    queueCreateInfos.push_back(transferQueueCreateInfo);
+    VkPhysicalDeviceFeatures deviceFeatures = {};
+    std::vector<const char*> deviceExtensions = {};
 
     VkDeviceCreateInfo deviceCreateInfo = {};
     deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     deviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
     deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
-
-    std::vector<const char*> deviceExtensions = {};
+    deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
     deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
     deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
 

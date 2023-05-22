@@ -2,16 +2,22 @@
 #include "VulkanRenderer.h"
 
 int main(int argc, char* argv[]) {
-    Window window("Voxploria");
-    VulkanRenderer renderer;
+    try {
+        Window window("Voxploria");
+        VulkanRenderer renderer;
 
-    renderer.Initialize();
+        renderer.Initialize();
 
-    while (window.IsRunning()) {
-        window.ProcessEvents();
+        while (window.IsRunning()) {
+            window.ProcessEvents();
+        }
+
+        renderer.Cleanup();
     }
-
-    renderer.Cleanup();
+    catch (const std::exception& e) {
+        std::cerr << "An error occurred: " << e.what() << std::endl;
+        return 1;
+    }
 
     return 0;
 }
